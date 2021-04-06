@@ -1,12 +1,5 @@
 
-// LCD display
-#include <Wire.h> 
-#include <LiquidCrystal_I2C.h>
-
-// Set the LCD address to 0x27 for a 16 chars and 2 line display
-LiquidCrystal_I2C lcd(0x3f, 16, 2);
-
-// Падіо модуль
+// Радіо модуль
 #include <SPI.h>
 #include "nRF24L01.h"
 #include "RF24.h"
@@ -15,6 +8,12 @@ int SS_1 = 10; int CE_1 = 9; // RX, TX
 int SS_2 = 5;  int CE_2 = 6; // RX, TX
 // Піни 11, 12, 13 зайняті автоматично
 
+// OLED дисплей
+#include <Arduino.h>
+#include <U8g2lib.h>
+#include <Wire.h>
+
+U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 
 // Звуковий модуль
 //#include "Arduino.h"
@@ -29,7 +28,7 @@ int SS_2 = 5;  int CE_2 = 6; // RX, TX
 //void printDetail(uint8_t type, int value);
 
 
-RF24 radio(CE_1, SS_1); // "Создать" модуль на пинах SS_1 и CE_1 Для Уно
+RF24 radio(CE_1, SS_1); // "Создать" модуль на пинах SS_1 и CE_1
 RF24 radio2(CE_2, SS_2);
 byte address[][6] = {"1Node", "2Node", "3Node", "4Node", "5Node", "6Node"}; // Возможные номера труб
 byte counter;
@@ -55,19 +54,24 @@ int myPlayerID             = 5;      // Player ID
 int myGameID               = 0;      // Interprited by configureGane subroutine; allows for quick change of game types.
 int myWeaponID             = 0;      // Deffined by gameType and configureGame subroutine.
 int myWeaponHP             = 0;      // Deffined by gameType and configureGame subroutine.
-int maxAmmo                = 0;      // Deffined by gameType and configureGame subroutine.
+int ClipType               = 1;      // 0 - показує кількість обойм, при преезарядці надлишок патронів зникає; 1 - показує кількість патронів в обоймі, надлишок зберігається.
+int ClipSize               = 15;     // Deffined by gameType and configureGame subroutine.
+int maxClips               = 5;      // Deffined by gameType and configureGame subroutine.
 int maxLife                = 0;      // Deffined by gameType and configureGame subroutine.
 int automatic              = 1;      // Deffined by gameType and configureGame subroutine. Automatic fire 0 = Semi Auto, 1 = Fully Auto.
 int automatic2             = 0;      // Deffined by gameType and configureGame subroutine. Secondary fire auto?
-int cooldownTime           = 350;
+int shootCooldownTime      = 350;
+int reloadCooldownTime     = 3000;
 
 //Incoming signal Details
 int received[18];                    // Received data: received[0] = which sensor, received[1] - [17] byte1 byte2 parity (Miles Tag structure)
 int check                  = 0;      // Variable used in parity checking
 
 // Stats
-int ammo                   = 0;      // Current ammunition
-int life                   = 0;      // Current life
+int ammo                   = 0;      // Current ammunition (автоматично налаштовується)
+int life                   = 0;      // Current life (автоматично налаштовується)
+int Clips                  = 3;      // Current clips (автоматично налаштовується)
+int ClipAmmo               = 0;      // Current ammo in clips (автоматично налаштовується)
 
 // Code Variables
 int timeOut                = 0;      // Deffined in frequencyCalculations (IRpulse + 50)
@@ -85,8 +89,6 @@ int IRfrequency            = 38;     // Frequency in kHz Standard values are: 38
 int IRt                    = 0;      // LED on time to give correct transmission frequency, calculated in setup.
 int IRpulses               = 0;      // Number of oscillations needed to make a full IRpulse, calculated in setup.
 int header                 = 4;      // Header lenght in pulses. 4 = Miles tag standard
-int maxSPS                 = 10;     // Maximum Shots Per Seconds. Not yet used.
-int TBS                    = 0;      // Time between shots. Not yet used.
 
 // Transmission data
 int byte1[8];                        // String for storing byte1 of the data which gets transmitted when the player fires.
@@ -104,22 +106,16 @@ int weapon[10];                      // Array must be as large as memory
 int hp[10];                          // Array must be as large as memory
 int parity[10];                      // Array must be as large as memory
 
-unsigned long timing1, timing2; // Переменная для хранения точки отсчета millis
-bool cooldown = false;
+unsigned long timing1, timing2, timing3; // Переменная для хранения точки отсчета millis
+bool shootCooldown = false, reloadCooldown = false;
 
 void setup() {
   // Serial coms set up to help with debugging.
   Serial.begin(9600);              
   Serial.println("Startup...");
+  
   // Pin declarations
   
-  // initialize the LCD
-  lcd.begin();
-
-  // Turn on the blacklight and print a message.
-  lcd.backlight();
-  lcd.print("Initialization...");
-
   pinMode(A0, INPUT);
   pinMode(A2, INPUT);
 //  pinMode(trigger2Pin, INPUT);
@@ -130,7 +126,7 @@ void setup() {
   pinMode(IRreceivePin, INPUT);
 //  pinMode(IRreceive2Pin, INPUT); // Пин для датчиков на голове
 
-  Serial.println("Ready2");
+  Serial.println("Ready1");
 
   frequencyCalculations();   // Calculates pulse lengths etc for desired frequency
   configureGame();           // Look up and configure game details
@@ -141,7 +137,7 @@ void setup() {
   digitalWrite(A2, HIGH);      // Not really needed if your circuit has the correct pull up resistors already but doesn't harm
 //  digitalWrite(trigger2Pin, HIGH);     // Not really needed if your circuit has the correct pull up resistors already but doesn't harm
 
-  Serial.println("Ready1");
+  Serial.println("Ready2");
 
   digitalWrite(SS_2, HIGH); // turn off radio2
   radio.begin(); //активировать модуль
@@ -177,30 +173,30 @@ void setup() {
   radio2.powerUp(); //начать работу
   radio2.startListening();  //начинаем слушать эфир, мы приёмный модуль
 
+  u8g2.begin(); // Initialization OLED display
   Serial.println("Ready....");
   playMp3("Ready");
-  
-  //LCD Display initialisation
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Ammo:");
-  lcd.setCursor(8, 0);
-  lcd.print("HP:");
 }
 
 
-// Main loop most of the code is in the sub routines
-void loop(){
+unsigned long timing01;
 
-  
+void loop(){
+//  OLEDdisplay();
   receiveIR();
   if(FIRE != 0){
     shoot();
   }
   triggers();
-  LCD_display();
   radioListing();
 //  radioWriting(51);
+  cooldowns();
+  
+  if(reloadCooldown == false){
+   if(millis() - timing01 > 100){
+    OLEDdisplay();
+    }
+  } else {OLEDdisplay();}
 }
 
 
@@ -212,7 +208,7 @@ void radioListing(){
   digitalWrite(SS_1, HIGH); // turn off radio1
     byte pipeNo, gotByte;                       
     if ( radio2.available(&pipeNo)){    // слушаем эфир со всех труб
-      radio2.read( &gotByte, sizeof(gotByte) );         // чиатем входящий сигнал
+      radio2.read( &gotByte, sizeof(gotByte) );         // читаем входящий сигнал
 
       Serial.print("Recieved: "); Serial.println(gotByte);
    }
@@ -220,30 +216,55 @@ void radioListing(){
 
 void radioWriting(byte transmit){
   digitalWrite(SS_2, HIGH); // turn off radio2
-  Serial.print("Sent: "); Serial.println(counter);
-  radio.write(&counter, sizeof(counter));
-  counter = 51;
+  Serial.print("Sent: "); Serial.println(transmit);
+  radio.write(&counter, sizeof(transmit));
   delay(10);
 }
 
-void LCD_display(){
-  if (millis() - timing2 > 250){ // Вместо 10000 подставьте нужное вам значение паузы 
-    timing2 = millis();
+
+void OLEDdisplay(){
+  u8g2.firstPage();
+  do {
+    u8g2.setFont(u8g2_font_ncenB10_tr);
+    //u8g2.drawStr(0,24,"HP:");
+
     
+    u8g2.setCursor(0, 20);
+    u8g2.print(F("HP:"));
+    
+    if(reloadCooldown == true)
+    {
+      float remainingCooldownTime = float(reloadCooldownTime - (millis() - timing3))/1000;
+      u8g2.setCursor(80, 20);
+      u8g2.print(remainingCooldownTime);
+    }
+    
+    u8g2.setCursor(40, 20);
+    u8g2.print(life);
+
+    u8g2.setFont(u8g2_font_inb33_mn);
+    
+    u8g2.setCursor(0, 64);
+    u8g2.print(ammo);
+    
+    u8g2.setFont(u8g2_font_inb16_mn);
+    
+    u8g2.setCursor(55, 64);
+    u8g2.print(F("/"));
+    u8g2.setCursor(70, 64);
+    
+    if (ClipType == 0)
+    {
+     u8g2.print(Clips);
+    } else
+    if (ClipType == 1)
+    {
+      u8g2.print(ClipAmmo);
+    }
+    
+  } while ( u8g2.nextPage() );
   
-  if(ammo < 10){
-    lcd.setCursor(5, 0);
-    lcd.print(" ");
-    lcd.setCursor(6, 0);
-  }else {
-    lcd.setCursor(5, 0);
-  }
-  
-  lcd.print(ammo);
-  
-  lcd.setCursor(11, 0);
-  lcd.print(life);
-  }
+  timing01 = millis();
 }
 
 void playMp3(String soundName){
@@ -322,20 +343,17 @@ void receiveIR() { // Void checks for an incoming signal and decodes it if it se
 //    }
 
     Serial.println("Original Signal: "); 
-    if(digitalRead(IRreceivePin) == LOW){
-    Serial.print("2"); 
-      unsigned long timing3;
-      timing3 = millis();
-    Serial.print("3"); 
+//    if(digitalRead(IRreceivePin) == LOW){
+      unsigned long timing0;
+      timing0 = millis();
     for(int i = 1; i <= 17; i++) {                        // Repeats several times to make sure the whole signal has been received
-    Serial.print("1"); 
       received[i] = pulseIn(IRreceivePin, LOW);  // pulseIn command waits for a pulse and then records its duration in microseconds. 
       Serial.print(received[i]); 
       
       // Time out
-        if (millis() - timing3 > 500){ 
+        if (millis() - timing0 > 500){ 
          Serial.println("Time Out!"); 
-         timing3 = millis();
+         timing0 = millis();
          for(int o = 1; i <= 17; i++) {  
           received[i] = 0;
          } 
@@ -375,7 +393,7 @@ void receiveIR() { // Void checks for an incoming signal and decodes it if it se
     else{Serial.println("ERROR");}
     if(error == 0){interpritReceived();}
     digitalWrite(hitPin,LOW);
-    }
+//    }
     
   }
 }
@@ -432,7 +450,7 @@ void interpritReceived(){  // After a message has been received by the ReceiveIR
 
 
 void shoot() {
- if (cooldown == false){
+ if (shootCooldown == false && reloadCooldown == false){
 
   if(FIRE == 1){ // Has the trigger been pressed?
 
@@ -479,19 +497,42 @@ void shoot() {
     Serial.println("DONE 2");
   }
   //ammo = ammo - 1;
-  cooldown = true;
+  shootCooldown = true;
   timing1 = millis();
  } 
-
- if (cooldown == true) {
-    if (millis() - timing1 > cooldownTime){
-      timing1 = millis();
-      cooldown = false; 
-    }
-  }
   FIRE = 0;
 }
 
+void cooldowns(){
+ if (shootCooldown == true) {
+    if (millis() - timing1 > shootCooldownTime){
+      timing1 = millis();
+      shootCooldown = false; 
+    }
+  }
+  if (reloadCooldown == true) {
+    if (millis() - timing3 > reloadCooldownTime){
+      timing3 = millis();
+      reloadCooldown = false; 
+      
+      // Продовження перезарядки (знаю, запутано, але як є)
+      if(ClipType == 0){
+        ammo = ClipSize;
+        Clips--;
+      }
+      if(ClipType == 1){
+        if(ClipAmmo >= ClipSize){
+        ClipAmmo -= (ClipSize - ammo);
+        ammo = ClipSize;
+        } else 
+        if(ClipAmmo < ClipSize){
+        ammo = ClipAmmo;
+        ClipAmmo -= ClipAmmo;
+        }
+      }
+    }
+  }
+}
 
 void sendPulse(int pin, int length){ // importing variables like this allows for secondary fire modes etc.
 // This void genertates the carrier frequency for the information to be transmitted
@@ -536,8 +577,12 @@ void triggers() { // Checks to see if the triggers have been presses
 //    Serial.println("FIRE");
   }
   if(rTR == LOW){
-    ammo = maxAmmo;
+    if(Clips > 0 && ammo != ClipSize && reloadCooldown != true){
     playMp3("Reload");
+    reloadCooldown = true;
+    timing3 = millis();
+    // Початок перезарядки, продовження в куллдауні
+    }
   }
 
 }
@@ -546,15 +591,23 @@ void triggers() { // Checks to see if the triggers have been presses
 void configureGame() { // Where the game characteristics are stored, allows several game types to be recorded and you only have to change one variable (myGameID) to pick the game.
   if(myGameID == 0){
     myWeaponID = 1;
-    maxAmmo = 15;
-    ammo = 15;
+    ClipSize = 15;
+    Clips = 3; 
+    maxClips = 5;
     maxLife = 3;
-    life = 3;
     myWeaponHP = 1;
+    
+    // Автоматичне налаштування
+    ammo = ClipSize;
+    life = maxLife;
+    if(ClipType == 1){
+    ClipAmmo = ClipSize*Clips;
+    }
+    
   }
   if(myGameID == 1){
     myWeaponID = 1;
-    maxAmmo = 100;
+    ClipSize = 100;
     ammo = 100;
     maxLife = 10;
     life = 10;
@@ -637,13 +690,6 @@ void tagCode() { // Works out what the players tagger code (the code that is tra
 
 
 void dead() { // void determines what the tagger does when it is out of lives
-  // Makes a few noises and flashes some lights
-  lcd.clear();
-  lcd.setCursor(6, 0);
-  lcd.print("DEAD");
-//  lcd.setCursor(0, 1);
-//  lcd.print("GO TO BASE");
-
   Serial.println("DEAD");
   playMp3("Die");
 
