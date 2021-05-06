@@ -1,13 +1,3 @@
-
-// Радіо модуль
-#include <SPI.h>
-#include "nRF24L01.h"
-#include "RF24.h"
-// Піни радіо модуля
-int SS_1 = 10; int CE_1 = 9; // RX, TX
-int SS_2 = 5;  int CE_2 = 6; // RX, TX
-// Піни 11, 12, 13 зайняті автоматично
-
 // OLED дисплей
 #include <Arduino.h>
 #include <U8g2lib.h>
@@ -16,52 +6,44 @@ int SS_2 = 5;  int CE_2 = 6; // RX, TX
 U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 
 // Звуковий модуль
-//#include "Arduino.h"
-//#include "SoftwareSerial.h"
-//#include "DFRobotDFPlayerMini.h"
+#include "Arduino.h"
+#include "SoftwareSerial.h"
+#include "DFRobotDFPlayerMini.h"
 
 // Піни звукового модулю
-//int soundRX_pin = 8;
-//int soundTX_pin = 3;
-//SoftwareSerial mySoftwareSerial(soundRX_pin, soundTX_pin); // RX, TX
-//DFRobotDFPlayerMini myDFPlayer;
-//void printDetail(uint8_t type, int value);
-
-
-RF24 radio(CE_1, SS_1); // "Создать" модуль на пинах SS_1 и CE_1
-RF24 radio2(CE_2, SS_2);
-byte address[][6] = {"1Node", "2Node", "3Node", "4Node", "5Node", "6Node"}; // Возможные номера труб
-byte counter;
+byte soundRX_pin = 11;
+byte soundTX_pin = 9;
+SoftwareSerial mySoftwareSerial(soundRX_pin, soundTX_pin); // RX, TX
+DFRobotDFPlayerMini myDFPlayer;
+void printDetail(uint8_t type, int value);
 
 
 // Digital IO's
 //int triggerPin             = 3;      // Push button for primary fire. Low = pressed
-int hitPin                 = 7;      // LED output pin used to indicate when the player has been hit.
-int IRtransmitPin          = 2;      // Primary fire mode IR transmitter pin: Use pins 2,4,7,8,12 or 13. DO NOT USE PWM pins!! More info: http://j44industries.blogspot.com/2009/09/arduino-frequency-generation.html#more
-int IRreceivePin           = 4;     // The pin that incoming IR signals are read from
-int speakerPin             = 3;      // Direct output to piezo sounder/speaker
+byte hitPin                 = 7;      // LED output pin used to indicate when the player has been hit.
+byte IRreceive2Pin          = 3;     // Allows for checking external sensors are attached as well as distinguishing between sensor locations (eg spotting head shots)
+byte IRtransmitPin          = 2;      // Primary fire mode IR transmitter pin: Use pins 2,4,7,8,12 or 13. DO NOT USE PWM pins!! More info: http://j44industries.blogspot.com/2009/09/arduino-frequency-generation.html#more
+byte IRreceivePin           = 4;     // The pin that incoming IR signals are read from
+//int speakerPin             = 3;      // Direct output to piezo sounder/speaker
 
 // int IRtransmit2Pin         = 8;      // Secondary fire mode IR transmitter pin:  Use pins 2,4,7,8,12 or 13. DO NOT USE PWM pins!!
-// int IRreceive2Pin          = 11;     // Allows for checking external sensors are attached as well as distinguishing between sensor locations (eg spotting head shots)
 // int trigger2Pin            = 13;     // Push button for secondary fire. Low = pressed 
 // закоментировал по причине нехватки пинов
 
-// Minimum gun requirements: trigger, receiver, IR led, hit LED.
-
 // Player and Game details
-int myTeamID               = 1;      // 1-7 (0 = system message)
-int myPlayerID             = 5;      // Player ID
-int myGameID               = 0;      // Interprited by configureGane subroutine; allows for quick change of game types.
-int myWeaponID             = 0;      // Deffined by gameType and configureGame subroutine.
-int myWeaponHP             = 0;      // Deffined by gameType and configureGame subroutine.
-int ClipType               = 1;      // 0 - показує кількість обойм, при преезарядці надлишок патронів зникає; 1 - показує кількість патронів в обоймі, надлишок зберігається.
-int ClipSize               = 15;     // Deffined by gameType and configureGame subroutine.
-int maxClips               = 5;      // Deffined by gameType and configureGame subroutine.
-int maxLife                = 0;      // Deffined by gameType and configureGame subroutine.
-int automatic              = 1;      // Deffined by gameType and configureGame subroutine. Automatic fire 0 = Semi Auto, 1 = Fully Auto.
-int automatic2             = 0;      // Deffined by gameType and configureGame subroutine. Secondary fire auto?
-int shootCooldownTime      = 350;
-int reloadCooldownTime     = 3000;
+byte myTeamID               = 1;      // 1-7 (0 = system message)
+byte myPlayerID             = 2;      // Player ID
+byte myGameID               = 0;      // Interprited by configureGane subroutine; allows for quick change of game types.
+byte myWeaponID             = 0;      // Deffined by gameType and configureGame subroutine.
+byte myWeaponHP             = 0;      // Deffined by gameType and configureGame subroutine.
+byte ClipType               = 1;      // 0 - показує кількість обойм, при преезарядці надлишок патронів зникає; 1 - показує кількість патронів в обоймі, надлишок зберігається.
+byte ClipSize               = 15;     // Deffined by gameType and configureGame subroutine.
+byte maxClips               = 5;      // Deffined by gameType and configureGame subroutine.
+byte maxLife                = 0;      // Deffined by gameType and configureGame subroutine.
+byte automatic              = 1;      // Deffined by gameType and configureGame subroutine. Automatic fire 0 = Semi Auto, 1 = Fully Auto.
+byte automatic2             = 0;      // Deffined by gameType and configureGame subroutine. Secondary fire auto?
+int shootCooldownTime       = 350;
+int reloadCooldownTime      = 3000;
 
 //Incoming signal Details
 int received[18];                    // Received data: received[0] = which sensor, received[1] - [17] byte1 byte2 parity (Miles Tag structure)
@@ -69,19 +51,19 @@ int check                  = 0;      // Variable used in parity checking
 
 // Stats
 int ammo                   = 0;      // Current ammunition (автоматично налаштовується)
-int life                   = 0;      // Current life (автоматично налаштовується)
+byte life                   = 0;      // Current life (автоматично налаштовується)
 int Clips                  = 3;      // Current clips (автоматично налаштовується)
 int ClipAmmo               = 0;      // Current ammo in clips (автоматично налаштовується)
 
 // Code Variables
-int timeOut                = 0;      // Deffined in frequencyCalculations (IRpulse + 50)
-int FIRE                   = 0;      // 0 = don't fire, 1 = Primary Fire, 2 = Secondary Fire
-int rTR                    = 0;      // Reload Trigger
-int LrTR                   = 0;      // Last Reload Trigger Reading
-int TR                     = 0;      // Trigger Reading
-int LTR                    = 0;      // Last Trigger Reading
-int T2R                    = 0;      // Trigger 2 Reading (For secondary fire)
-int LT2R                   = 0;      // Last Trigger 2 Reading (For secondary fire)
+int timeOut                 = 0;      // Deffined in frequencyCalculations (IRpulse + 50)
+bool FIRE                   = 0;      // 0 = don't fire, 1 = Primary Fire, 2 = Secondary Fire
+bool rTR                    = 0;      // Reload Trigger
+bool LrTR                   = 0;      // Last Reload Trigger Reading
+bool TR                     = 0;      // Trigger Reading
+bool LTR                    = 0;      // Last Trigger Reading
+bool T2R                    = 0;      // Trigger 2 Reading (For secondary fire)
+bool LT2R                   = 0;      // Last Trigger 2 Reading (For secondary fire)
 
 // Signal Properties
 int IRpulse                = 600;    // Basic pulse duration of 600uS MilesTag standard 4*IRpulse for header bit, 2*IRpulse for 1, 1*IRpulse for 0.
@@ -96,18 +78,37 @@ int byte2[8];                        // String for storing byte1 of the data whi
 int myParity               = 0;      // String for storing parity of the data which gets transmitted when the player fires.
 
 // Received data
-int memory                 = 10;     // Number of signals to be recorded: Allows for the game data to be reviewed after the game, no provision for transmitting / accessing it yet though.
-int hitNo                  = 0;      // Hit number
+byte memory                 = 10;     // Number of signals to be recorded: Allows for the game data to be reviewed after the game, no provision for transmitting / accessing it yet though.
+byte hitNo                  = 0;      // Hit number
 // Byte1
-int player[10];                      // Array must be as large as memory
-int team[10];                        // Array must be as large as memory
+byte player[10];                      // Array must be as large as memory
+byte team[10];                        // Array must be as large as memory
 // Byte2
-int weapon[10];                      // Array must be as large as memory
-int hp[10];                          // Array must be as large as memory
-int parity[10];                      // Array must be as large as memory
+byte weapon[10];                      // Array must be as large as memory
+byte hp[10];                          // Array must be as large as memory
+byte parity[10];                      // Array must be as large as memory
 
-unsigned long timing1, timing2, timing3; // Переменная для хранения точки отсчета millis
+static uint32_t timing01, timing1, timing2, timing3; // Переменная для хранения точки отсчета millis
+
 bool shootCooldown = false, reloadCooldown = false;
+// отправка данных по однопроводному юарту
+// подключаем софт юарт
+#include "softUART.h"
+// делаем только отправителем (экономит память)
+softUART<5, GBUS_TX> UART(1000); // пин 5, скорость 1000
+
+// подключаем GBUS
+#include "GBUS.h"
+GBUS bus(&UART, 3, 20); // обработчик UART, адрес 3, буфер 20 байт
+
+
+struct myStruct {
+  byte dieCheck;
+  byte teamID;
+  byte playerID;
+  byte ValidID = 111;
+};
+myStruct DieInformation;
 
 void setup() {
   // Serial coms set up to help with debugging.
@@ -119,12 +120,40 @@ void setup() {
   pinMode(A0, INPUT);
   pinMode(A2, INPUT);
 //  pinMode(trigger2Pin, INPUT);
-  pinMode(speakerPin, OUTPUT);
+//  pinMode(speakerPin, OUTPUT);
   pinMode(hitPin, OUTPUT);
   pinMode(IRtransmitPin, OUTPUT);
 //  pinMode(IRtransmit2Pin, OUTPUT);
   pinMode(IRreceivePin, INPUT);
 //  pinMode(IRreceive2Pin, INPUT); // Пин для датчиков на голове
+
+  mySoftwareSerial.begin(9600);
+  
+  DieInformation.dieCheck = 0;
+  DieInformation.playerID = 0;
+  
+  Serial.println();
+  Serial.println(F("DFRobot DFPlayer Mini Demo"));
+  Serial.println(F("Initializing DFPlayer ... (May take 3~5 seconds)"));
+  
+  if (!myDFPlayer.begin(mySoftwareSerial)) {  //Use softwareSerial to communicate with mp3.
+    Serial.println(F("Unable to begin:"));
+    Serial.println(F("1.Please recheck the connection!"));
+    Serial.println(F("2.Please insert the SD card!"));
+    while(true);
+  }
+  Serial.println(F("DFPlayer Mini online."));
+  
+  myDFPlayer.setTimeOut(500); //Set serial communictaion time out 500ms
+  
+  //----Set volume----
+  myDFPlayer.volume(30);  //Set volume value (0~30).
+  
+  //----Set different EQ----
+ myDFPlayer.EQ(DFPLAYER_EQ_NORMAL);
+  
+  //----Set device we use SD as default----
+  myDFPlayer.outputDevice(DFPLAYER_DEVICE_SD);
 
   Serial.println("Ready1");
 
@@ -138,48 +167,13 @@ void setup() {
 //  digitalWrite(trigger2Pin, HIGH);     // Not really needed if your circuit has the correct pull up resistors already but doesn't harm
 
   Serial.println("Ready2");
-
-  digitalWrite(SS_2, HIGH); // turn off radio2
-  radio.begin(); //активировать модуль
-  radio.setAutoAck(1);         //режим подтверждения приёма, 1 вкл 0 выкл
-  radio.setRetries(0, 15);    //(время между попыткой достучаться, число попыток)
-  radio.enableAckPayload();    //разрешить отсылку данных в ответ на входящий сигнал
-  radio.setPayloadSize(32);     //размер пакета, в байтах
-
-  radio.openWritingPipe(address[0]);   //мы - труба 0, открываем канал для передачи данных
-  radio.setChannel(0x60);  //выбираем канал (в котором нет шумов!)
-
-  radio.setPALevel (RF24_PA_MAX); //уровень мощности передатчика. На выбор RF24_PA_MIN, RF24_PA_LOW, RF24_PA_HIGH, RF24_PA_MAX
-  radio.setDataRate (RF24_250KBPS); //скорость обмена. На выбор RF24_2MBPS, RF24_1MBPS, RF24_250KBPS
-  //должна быть одинакова на приёмнике и передатчике!
-  //при самой низкой скорости имеем самую высокую чувствительность и дальность!!
-
-  radio.powerUp(); //начать работу
-  radio.stopListening();  //не слушаем радиоэфир, мы передатчик
   
-  digitalWrite(SS_1, HIGH); // turn off radio1
-  radio2.begin(); //активировать модуль
-  radio2.setAutoAck(1);         //режим подтверждения приёма, 1 вкл 0 выкл
-  radio2.setRetries(0, 15);    //(время между попыткой достучаться, число попыток)
-  radio2.enableAckPayload();    //разрешить отсылку данных в ответ на входящий сигнал
-  radio2.setPayloadSize(32);     //размер пакета, в байтах
-
-  radio2.openReadingPipe(1,address[0]);      //хотим слушать трубу 0
-  radio2.setChannel(0x60);  //выбираем канал (в котором нет шумов!)
-
-  radio2.setPALevel (RF24_PA_MAX); //уровень мощности передатчика. На выбор RF24_PA_MIN, RF24_PA_LOW, RF24_PA_HIGH, RF24_PA_MAX
-  radio2.setDataRate (RF24_250KBPS); //скорость обмена. На выбор RF24_2MBPS, RF24_1MBPS, RF24_250KBPS
-
-  radio2.powerUp(); //начать работу
-  radio2.startListening();  //начинаем слушать эфир, мы приёмный модуль
-
   u8g2.begin(); // Initialization OLED display
-  Serial.println("Ready....");
   playMp3("Ready");
+  Serial.println("Ready....");
 }
 
 
-unsigned long timing01;
 
 void loop(){
 //  OLEDdisplay();
@@ -188,39 +182,29 @@ void loop(){
     shoot();
   }
   triggers();
-  radioListing();
-//  radioWriting(51);
   cooldowns();
-  
+
   if(reloadCooldown == false){
    if(millis() - timing01 > 100){
     OLEDdisplay();
     }
   } else {OLEDdisplay();}
+  SoftUARTsending();
 }
 
 
 
 // SUB ROUTINES
-
-
-void radioListing(){
-  digitalWrite(SS_1, HIGH); // turn off radio1
-    byte pipeNo, gotByte;                       
-    if ( radio2.available(&pipeNo)){    // слушаем эфир со всех труб
-      radio2.read( &gotByte, sizeof(gotByte) );         // читаем входящий сигнал
-
-      Serial.print("Recieved: "); Serial.println(gotByte);
-   }
+void SoftUARTsending(){
+  // в тике сидит отправка и приём
+  bus.tick();
+  static uint32_t tmr;
+//  if (millis() - tmr >= 2000) {
+    tmr = millis();
+    // отправляем каждые 2 секунды
+    bus.sendData(5, DieInformation);  // на адрес 5
+//  }
 }
-
-void radioWriting(byte transmit){
-  digitalWrite(SS_2, HIGH); // turn off radio2
-  Serial.print("Sent: "); Serial.println(transmit);
-  radio.write(&counter, sizeof(transmit));
-  delay(10);
-}
-
 
 void OLEDdisplay(){
   u8g2.firstPage();
@@ -234,7 +218,7 @@ void OLEDdisplay(){
     
     if(reloadCooldown == true)
     {
-      float remainingCooldownTime = float(reloadCooldownTime - (millis() - timing3))/1000;
+      float remainingCooldownTime = float(reloadCooldownTime - (millis() - timing3))*0.001;
       u8g2.setCursor(80, 20);
       u8g2.print(remainingCooldownTime);
     }
@@ -269,43 +253,35 @@ void OLEDdisplay(){
 
 void playMp3(String soundName){
   if(soundName == "Shoot"){
-//  myDFPlayer.play(random(1, 2));
-
-    for (int i = 1;i < 15;i++) { // Loop plays start up noise
-      playTone((250+9*i), 2);
-    } 
-    for (int i = 1;i < 25;i++) { // Loop plays start up noise
-      playTone((2000-9*i), 2);
-    } 
-    for (int i = 1;i < 50;i++) { // Loop plays start up noise
-      playTone((1500+15*i), 2);
+     for (int i = 1;i < 254;i++) { // Loop plays start up noise
+      if (i == 1) {
+        myDFPlayer.play(random(4, 6));
+      }
     } 
   }
   if(soundName == "Ready"){
-//  myDFPlayer.play(0);
      for (int i = 1;i < 254;i++) { // Loop plays start up noise
-      playTone((3000-9*i), 2);
+      if (i == 1) {
+        myDFPlayer.play(3);
+      }
     } 
   }
   if(soundName == "takeHit"){
 //  myDFPlayer.play();
   }
   if(soundName == "Reload"){
-  //myDFPlayer.play(4);
-     for (int i = 1;i < 3;i++) { // Loop plays start up noise
-      playTone(500, 100);
-    } 
-    for (int i = 1;i < 3;i++) { // Loop plays start up noise
-      playTone(1000, 100);
-    } 
-    for (int i = 1;i < 3;i++) { // Loop plays start up noise
-      playTone(500, 100);
+     for (int i = 1;i < 254;i++) { // Loop plays start up noise
+      if (i == 1) {
+        myDFPlayer.play(3);
+      }
     } 
   }
   if(soundName == "NoAmmo"){
-  //myDFPlayer.play(5);
-  playTone(500, 100);
-  playTone(1000, 100);
+     for (int i = 1;i < 254;i++) { // Loop plays start up noise
+      if (i == 1) {
+        myDFPlayer.play(4);
+      }
+    } 
   }
   if(soundName == "Die"){
   //myDFPlayer.play();
@@ -315,15 +291,14 @@ void playMp3(String soundName){
   }
 }
 
-void playTone(int tone, int duration) { // A sub routine for playing tones like the standard arduino melody example
-  for (long i = 0; i < duration * 1000L; i += tone * 2) {
-    digitalWrite(speakerPin, HIGH);
-    delayMicroseconds(tone);
-    digitalWrite(speakerPin, LOW);
-    delayMicroseconds(tone);
-  }
-}
-
+//void playTone(int tone, int duration) { // A sub routine for playing tones like the standard arduino melody example
+//  for (long i = 0; i < duration * 1000L; i += tone * 2) {
+//    digitalWrite(speakerPin, HIGH);
+//    delayMicroseconds(tone);
+//    digitalWrite(speakerPin, LOW);
+//    delayMicroseconds(tone);
+//}
+//
 
 void receiveIR() { // Void checks for an incoming signal and decodes it if it sees one.
   int error = 0;
@@ -432,9 +407,11 @@ void interpritReceived(){  // After a message has been received by the ReceiveIR
   Serial.print("Hit No: ");
   Serial.print(hitNo);
   Serial.print("  Player: ");
+  DieInformation.playerID = player[hitNo];
   Serial.print(player[hitNo]);
   Serial.print("  Team: ");
   Serial.print(team[hitNo]);
+  DieInformation.teamID = player[hitNo];
   Serial.print("  Weapon: ");
   Serial.print(weapon[hitNo]);
   Serial.print("  HP: ");
@@ -577,7 +554,7 @@ void triggers() { // Checks to see if the triggers have been presses
 //    Serial.println("FIRE");
   }
   if(rTR == LOW){
-    if(Clips > 0 && ammo != ClipSize && reloadCooldown != true){
+    if(ClipAmmo > 0 && ammo != ClipSize && reloadCooldown != true){
     playMp3("Reload");
     reloadCooldown = true;
     timing3 = millis();
@@ -692,7 +669,9 @@ void tagCode() { // Works out what the players tagger code (the code that is tra
 void dead() { // void determines what the tagger does when it is out of lives
   Serial.println("DEAD");
   playMp3("Die");
-
+  DieInformation.dieCheck = 1;
+  DieInformation.playerID = 5;
+  SoftUARTsending();
 }
 
 
@@ -701,7 +680,7 @@ void noAmmo() { // Make some noise and flash some lights when out of ammo
   playMp3("NoAmmo");
   digitalWrite(hitPin,LOW);
   Serial.println("No Ammo!");
-
+  delay(50);
 }
 
 
@@ -712,4 +691,8 @@ void hit() { // Make some noise and flash some lights when you get shot
   Serial.println(life);
   playMp3("Hit");
   digitalWrite(hitPin,LOW);
+}
+
+void Respawn(){
+  DieInformation.dieCheck = 0;
 }
