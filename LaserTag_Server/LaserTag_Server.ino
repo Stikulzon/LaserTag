@@ -5,11 +5,13 @@
 #include "printf.h"
 #include "mString.h"
 #include "Parser.h"
+#include <SoftwareSerial.h>
 // Піни радіо модуля
-int SS_1 = 10; int CE_1 = 9; // RX, TX
+int SS1 = 10; int CE1 = 9; // RX, TX
 // Піни 11, 12, 13 зайняті автоматично
+RF24 radio(CE1, SS1); // "Создать" модуль на пинах SS_1 и CE_1
 
-RF24 radio(CE_1, SS_1); // "Создать" модуль на пинах SS_1 и CE_1
+SoftwareSerial mySerial(6, 7); // указываем пины rx и tx соответственно
 
 byte addresses[][6] = {"1Node","2Node","3Node","4Node","5Node","6Node"};              // Radio pipe addresses for the 2 nodes to communicate.
 byte RecivedCounter [3];
@@ -84,7 +86,11 @@ void setup() {
   Serial.begin(9600);
   Serial.setTimeout(5);
   printf_begin();
-  
+
+//  for(int i = 0; i<deviceCount; i++){
+//    digitalWrite(SS1[i], HIGH); // turn off radio2
+//  }
+//  if(deviceCount>1){
   radio.begin();
   radio.setAutoAck(1);                    // Ensure autoACK is enabled
   radio.enableAckPayload();               // Allow optional ack payloads
@@ -94,11 +100,11 @@ void setup() {
   radio.openReadingPipe(1,addresses[0]);      // Open a reading pipe on address 0, pipe 1
   radio.setChannel(0x60);  //выбираем канал (в котором нет шумов!)
   radio.startListening();                 // Start listening
-  radio.setPALevel (RF24_PA_MAX); //уровень мощности передатчика. На выбор RF24_PA_MIN, RF24_PA_LOW, RF24_PA_HIGH, RF24_PA_MAX
+  radio.setPALevel (RF24_PA_LOW); //уровень мощности передатчика. На выбор RF24_PA_MIN, RF24_PA_LOW, RF24_PA_HIGH, RF24_PA_MAX
   radio.setDataRate (RF24_1MBPS); //скорость обмена. На выбор RF24_2MBPS, RF24_1MBPS, RF24_250KBPS
   radio.powerUp();
   radio.printDetails();                   // Dump the configuration of the rf unit for debugging
-  
+//  }
   
       Nickname1[0] = "Start";
       Nickname1[1] = "Masa";
@@ -131,7 +137,6 @@ void parseString(){
   int sw = atoi(data[0]);
   switch(sw){
     case 1:
-    gameID = atoi(data[1]);
     playerCount = atoi(data[2]);
       for (int i = 1; i < am; i++) {
 //        Serial.println(data[i]);
@@ -139,7 +144,8 @@ void parseString(){
     break;
     case 2:
       for (int i = 1; i < am; i++) {
-        Nickname1[i] = data[i];
+        gameID = atoi(data[1]);
+        Nickname1[i] = data[i+1];
 //        Serial.println(data[i]);
         Serial.println("Нікнейми записані упішно.");
       }
@@ -168,8 +174,8 @@ void parseString(){
       Serial.println("Індіфкатор,data,data,data...;");
       Serial.println("Індіфкатори команд:");
       Serial.println("0 - Допомога");
-      Serial.println("1 - Налаштування гри (індіфкатор,gameID,palyerCount)");
-      Serial.println("2 - Нікнейми (індіфкатор,нікнейм1,нікнейм2,нікнейм3...)");
+      Serial.println("1 - Налаштування гри (індіфкатор,palyerCount)");
+      Serial.println("2 - Нікнейми (індіфкатор,gameID,нікнейм1,нікнейм2,нікнейм3...)");
       Serial.println("5 - Розпочати налаштування");
       Serial.println("6 - Розпочати гру");
       Serial.println("7 - Автоматичне налаштування і початок гри");

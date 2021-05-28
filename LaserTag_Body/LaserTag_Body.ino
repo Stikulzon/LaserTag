@@ -16,6 +16,35 @@ int SS_1 = 10; int CE_1 = 9; // RX, TX
 RF24 radio(CE_1, SS_1); // "Создать" модуль на пинах SS_1 и CE_1
 byte addresses[][6] = {"1Node","2Node","3Node","4Node","5Node","6Node"};              // Radio pipe addresses for the 2 nodes to communicate.
 
+// RFID модуль
+#include <SPI.h>
+#include <MFRC522.h>
+
+/*Using Hardware SPI of Arduino */
+/*MOSI (11), MISO (12) and SCK (13) are fixed */
+/*You can configure SS and RST Pins*/
+#define SS_PIN 10  /* Slave Select Pin */
+#define RST_PIN 7  /* Reset Pin */
+
+/* Create an instance of MFRC522 */
+MFRC522 mfrc522(SS_PIN, RST_PIN);
+/* Create an instance of MIFARE_Key */
+MFRC522::MIFARE_Key key;          
+
+/* Set the block to which we want to write data */
+/* Be aware of Sector Trailer Blocks */
+int blockNum = 2;  
+/* Create an array of 16 Bytes and fill it with data */
+/* This is the actual data which is going to be written into the card */
+byte blockData [16] = {"tower-1---------"};
+
+/* Create another array to read data from Block */
+/* Legthn of buffer should be 2 Bytes more than the size of Block (16 Bytes) */
+byte bufferLen = 18;
+byte readBlockData[18];
+
+MFRC522::StatusCode status;
+
 byte zero[] = {
   B11111,
   B10001,
@@ -178,7 +207,7 @@ static uint32_t timing1, timing2; // Переменная для хранени�
 byte myPlayerID;
 
 
-byte myID = 2;
+byte myID = 1;
 mString<16> Nicknames1[8];
 int packageID = 1, gameID;
 bool mode = 0, gameIsBegin = 0;
@@ -187,6 +216,13 @@ void setup() {
   Serial.begin(9600);
   printf_begin();
   
+  // RFID модуль
+  digitalWrite(SS_1, HIGH); // turn off radio1
+  mfrc522.PCD_Init();
+  Serial.println("Scan a MIFARE 1K Tag to write data...");
+  
+  // Радіо модуль
+  digitalWrite(SS_PIN, HIGH); // turn off RFID
   radio.begin();
   radio.setAutoAck(1);                    // Ensure autoACK is enabled
   radio.enableAckPayload();               // Allow optional ack payloads
@@ -197,7 +233,7 @@ void setup() {
   radio.setChannel(0x60);  //выбираем канал (в котором нет шумов!)
   radio.startListening();                 // Start listening
   
-  radio.setPALevel (RF24_PA_MAX); //уровень мощности передатчика. На выбор RF24_PA_MIN, RF24_PA_LOW, RF24_PA_HIGH, RF24_PA_MAX
+  radio.setPALevel (RF24_PA_LOW); //уровень мощности передатчика. На выбор RF24_PA_MIN, RF24_PA_LOW, RF24_PA_HIGH, RF24_PA_MAX
   radio.setDataRate (RF24_1MBPS); //скорость обмена. На выбор RF24_2MBPS, RF24_1MBPS, RF24_250KBPS
   
   radio.powerUp();
@@ -223,11 +259,14 @@ void setup() {
 }
 
 void loop() {
+  digitalWrite(SS_PIN, HIGH); // turn off RFID
   req();
   LCD_display();
   if(gameIsBegin == true){
     SoftUARTrecive();
   }
+  digitalWrite(SS_1, HIGH); // turn off radio
+  RFID();
 }
 
 void LCD_display(){
@@ -476,3 +515,84 @@ void updateProgressBar(unsigned long count, unsigned long totalCount, int cellTo
       }
     }  
  }
+
+ void RFID(){
+  
+  /* Prepare the ksy for authentication */
+  /* All keys are set to FFFFFFFFFFFFh at chip delivery from the factory */
+  for (byte i = 0; i < 6; i++)
+  {
+    key.keyByte[i] = 0xFF;
+  }
+  
+  /* Select one of the cards */
+  if ( ! mfrc522.PICC_ReadCardSerial()) 
+  {
+    return;
+  }
+    Serial.print("\n");
+    Serial.println("**Card Detected**");
+    /* Print UID of the Card */
+    Serial.print(F("Card UID:"));
+    for (byte i = 0; i < mfrc522.uid.size; i++)
+    {
+      Serial.print(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " ");
+      Serial.print(mfrc522.uid.uidByte[i], HEX);
+    }
+    Serial.print("\n");
+    /* Print type of card (for example, MIFARE 1K) */
+    Serial.print(F("PICC type: "));
+    MFRC522::PICC_Type piccType = mfrc522.PICC_GetType(mfrc522.uid.sak);
+    Serial.println(mfrc522.PICC_GetTypeName(piccType));
+     
+    /* Read data from the same block */
+    Serial.print("\n");
+    Serial.println("Reading from Data Block...");
+    ReadDataFromBlock(blockNum, readBlockData);
+    /* If you want to print the full memory dump, uncomment the next line */
+    //mfrc522.PICC_DumpToSerial(&(mfrc522.uid));
+   
+    /* Print the data read from block */
+    Serial.print("\n");
+    Serial.print("Data in Block:");
+    Serial.print(blockNum);
+    Serial.print(" --> ");
+    String bytes = "";
+    for (int j=0 ; j<16 ; j++)
+    {
+//    bytes = bytes + );
+      Serial.print((char*)readBlockData[j]);
+    }
+    Serial.print("\n");
+ }
+
+void ReadDataFromBlock(int blockNum, byte readBlockData[]) 
+{
+  /* Authenticating the desired data block for Read access using Key A */
+  byte status = mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, blockNum, &key, &(mfrc522.uid));
+
+  if (status != MFRC522::STATUS_OK)
+  {
+     Serial.print("Authentication failed for Read: ");
+     Serial.println(mfrc522.GetStatusCodeName(status));
+     return;
+  }
+  else
+  {
+    Serial.println("Authentication success");
+  }
+
+  /* Reading data from the Block */
+  status = mfrc522.MIFARE_Read(blockNum, readBlockData, &bufferLen);
+  if (status != MFRC522::STATUS_OK)
+  {
+    Serial.print("Reading failed: ");
+    Serial.println(mfrc522.GetStatusCodeName(status));
+    return;
+  }
+  else
+  {
+    Serial.println("Block was read successfully");  
+  }
+  
+}
